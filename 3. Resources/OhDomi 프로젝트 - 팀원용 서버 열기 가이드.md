@@ -12,8 +12,11 @@ tags: [resource/development]
 > [!info] 2026-08-12 갱신 — 고정 URL(Tailscale Funnel)로 전환
 > `trycloudflare.com` 퀵 터널은 링크가 매번 랜덤이라는 문제로 **Tailscale Funnel**로 교체 — 이제 팀원에게 항상 같은 링크(`https://user.tail43e138.ts.net/`)를 공유하면 됨, 매번 새 링크를 다시 보낼 필요 없음. 최초 설정(설치·로그인·Funnel 활성화)은 이미 이 PC에서 완료됨. 아래 "요약"과 "절차"를 Tailscale 기준으로 다시 씀 — cloudflared 방식은 "대안" 절에 남겨둠(Tailscale 계정 없는 팀원이 급하게 열 때 등).
 
+> [!info] 2026-08-20 갱신 — `start-local.ps1`이 React를 처음부터 `--host`로 띄우도록 수정됨
+> 예전엔 스크립트가 `npm run dev`(옵션 없이)로 React를 띄워서 매번 수동으로 껐다 `--host`로 다시 켜야 했음(아래 "502" 문제) — 이제 스크립트 자체가 `npm run dev -- --host`를 실행하므로 이 수동 작업이 필요 없음(`OhDomiSpring` 커밋 `d5529b4`).
+
 ## 요약 (핵심 3줄)
-1. 로컬 4개 구성요소(Docker MySQL → Spring 8080 → closure-risk-model 8050 → React 5173)를 순서대로 띄운다. **React는 반드시 `npm run dev -- --host`로 띄울 것** — 기본 `npm run dev`는 `::1`(IPv6 loopback)에만 바인딩돼 Tailscale Funnel의 로컬 프록시(`127.0.0.1` 대상)가 502로 실패함(2026-08-12 발견).
+1. 로컬 4개 구성요소(Docker MySQL → Spring 8080 → closure-risk-model 8050 → React 5173)를 순서대로 띄운다. React는 `--host`로 바인딩되어야 함(2026-08-20부터 `start-local.ps1`이 자동 처리 — 기본 `npm run dev`는 `::1`(IPv6 loopback)에만 바인딩돼 Tailscale Funnel의 로컬 프록시(`127.0.0.1` 대상)가 502로 실패했었음, 2026-08-12 최초 발견).
 2. Tailscale Funnel이 이 PC에 이미 설정돼 있음(`tailscale funnel --bg 5173`) — **고정 URL**: `https://user.tail43e138.ts.net/`. React 서버만 켜져 있으면 이 링크가 그대로 살아있음(Vite가 `/api`→Spring, `/risk-api`→closure-risk-model로 프록시).
 3. 이 링크는 **내 컴퓨터가 켜져 있고 React 개발 서버(5173)가 살아있는 동안만** 유효 — Tailscale Funnel 설정 자체는 재부팅해도 유지되지만, 아래 서버들이 안 떠 있으면 502.
 
@@ -61,11 +64,11 @@ curl -s -o /dev/null -w "%{http_code}\n" https://user.tail43e138.ts.net/api/auth
 
 ### 3단계 — 팀원 안내
 - 접속: **`https://user.tail43e138.ts.net/`** (항상 같은 링크, Tailscale 계정 없어도 접속 가능 — Funnel은 공개 인터넷에 여는 기능)
-- 로그인: 관리자 `admin` / `1234`, 가맹점주 `qwer` / `1234` (2026-08-10 생성한 공식 데모 계정)
+- 로그인: 관리자 `admin` / `1234`, 가맹점주 `qwer` / `1234` (2026-08-10 생성한 공식 데모 계정). `qwer`는 2026-08-20부터 실제 매장(서울 서초구 잠원동점, store_id 1138 — 시연 시나리오 1의 고위험 매장)에 연결돼 있고, 최근 6개월치 시간대별 매출/메뉴별 판매 순위 데이터도 채워져 있음(`kimgane_store1138_6month_sales_seed.sql`).
 - 유효 조건: 내 컴퓨터가 켜져 있고 React 개발 서버(5173, `--host`로 실행)가 살아있는 동안
 
 ## 자주 겪는 문제
-- **502 Bad Gateway**: React 개발 서버가 `::1`에만 바인딩돼 있으면 발생(기본 `npm run dev`가 이럼) — `npm run dev -- --host`로 다시 띄울 것(2026-08-12 발견).
+- **502 Bad Gateway**: React 개발 서버가 `::1`에만 바인딩돼 있으면 발생 — 2026-08-20부터 `start-local.ps1`이 자동으로 `--host`를 붙여 실행하므로 스크립트로 띄웠다면 이제 거의 안 생김. 수동으로 `cd OhDomiReact; npm run dev`를 직접 친 경우에만 여전히 발생할 수 있음 → `npm run dev -- --host`로 다시 띄울 것.
 - **로그인이 그냥 안 됨(에러 메시지도 잘 안 보임)**: 브라우저 콘솔에 CORS 에러가 있는지 먼저 확인 — 새 터널 도메인을 열 때마다 위 "2026-08-12" 콜아웃의 두 가지(Spring `CorsConfig` allowlist, Vite `server.cors`)를 다시 점검해야 함. curl로 직접 때리면 되는데 브라우저에서만 안 되는 게 이 문제의 특징(curl은 브라우저 CORS 프리플라이트를 안 함).
 - **로그인 시 403 (CSRF)**: `SessionAuthFilter`가 `X-Requested-With: XMLHttpRequest` 헤더 없는 상태변경 요청을 막음 — 브라우저에서 React 앱의 fetch로 정상 호출하면 문제없음, curl로 직접 테스트할 때만 헤더 추가 필요. 그래도 브라우저에서 안 되면 캐시 문제일 가능성 높음 — 강력 새로고침(Ctrl+Shift+R) 또는 새 탭/시크릿 창.
 - **링크 접속은 되는데 매장 데이터가 안 뜸**: closure-risk-model(8050)이 `models/` 폴더 부재로 자동 시작을 건너뛰었을 수 있음 — 팀 채널에서 모델 파일 받아 수동 실행.
